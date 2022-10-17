@@ -65,7 +65,11 @@ ggplot(data = titanic_ds, aes(x = Pclass, y = Age)) +
   geom_boxplot() +
   labs(x = "Passenger class", y = "Age",  title = "Boxplot and Violin plot")
 ```
-```{r}
 
+```{r}
+install.packages("table1")
+library(table1)
+table1(~ titanic_ds$Sex | Pclass,
+       data = titanic_ds)
 ```
 
