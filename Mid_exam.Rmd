@@ -69,6 +69,7 @@ ggplot(data = titanic_ds, aes(x = Pclass, y = Age)) +
 ```{r}
 install.packages("table1")
 library(table1)
+# show the percentage using table1 function
 table1(~ titanic_ds$Sex | Pclass,
        data = titanic_ds)
 ```
