@@ -1,0 +1,246 @@
+---
+title: "ADA"
+author: "Zhiqing"
+date: '2022-11-16'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+## Introduction 
+This demo will use the NHANES (National Health and Nutrition Examination Survey) dataset from 2017- 2020.03 to ask and answer these questions:  
+
+a.Determine whether high blood pressure is associated with diabetic retinopathy or eyes affected among US Diabetic patients (45 years and above)
+
+b.Determine whether high cholesterol level is associated with diabetic retinopathy or eyes affected among US Diabetic patients (45 years and above) 
+
+c.Use Sex and Age as confounders/modifiers to build models.
+
+```{r}
+## Load packages and open libraries 
+library(dplyr) 
+library(table1)
+library(tidyverse)
+library(readxl)
+pacman::p_load(odds.n.ends, blorr, lmtest, car,  broom, jtools) 
+install.packages("foreign")
+library(foreign)
+```
+
+```{r}
+#select ID, Diabetic retinopathy(or eye affected) and Diabetic status from original dataset
+dataset17_Q1 <- read.xport("D:/2022-Fall/Data/Project/17/P_DIQ.xpt")
+dataset17_Q1 <- dataset17_Q1%>% 
+  select(`SEQN`,`DIQ080`,`DIQ010`)
+#select ID, Age and Sex from original dataset
+dataset17_demo <- read.xport("D:/2022-Fall/Data/Project/17/P_DEMO.xpt")
+dataset17_demo <- dataset17_demo%>% 
+  select(`SEQN`,`RIDAGEYR`,`RIAGENDR`)
+#select ID, blood pressure and blood cholestrol level from original dataset
+dataset17_Q2 <- read.xport("D:/2022-Fall/Data/Project/17/P_BPQ.xpt")
+dataset17_Q2 <- dataset17_Q2%>% 
+  select(`SEQN`,`BPQ020`,`BPQ080`)
+
+#merge three datasets by ID
+dataset17_total <- merge(dataset17_Q1,dataset17_demo, by = "SEQN")
+dataset17_total <- merge(dataset17_total,dataset17_Q2, by = "SEQN")
+
+#Drop all NA
+dataset_all <- drop_na(dataset17_total)
+```
+
+```{r}
+#recode DR or eye affected
+dataset_all <- dataset_all %>% 
+  mutate(DIQ080_new = case_when(DIQ080 == 1 ~ 1,
+                             DIQ080 == 2 ~ 0
+                             ))
+dataset_all$DIQ080_new<- factor(dataset_all$DIQ080_new, levels = c(0:1), labels = c("No_DR_or_Eye_affected", "DR_or_Eye_affected"))
+
+#check this variable
+table(dataset_all$DIQ080_new)
+```
+```{r}
+#filter diabetic status, choosing those with diabetes
+dataset_all <- dataset_all%>%
+  filter(DIQ010 == 1 )
+```
+
+```{r}
+#recode Sex
+dataset_all <- dataset_all %>% 
+  mutate(RIAGENDR_new = case_when(RIAGENDR == 1 ~ 1,
+                             RIAGENDR == 2 ~ 0
+                             ))
+dataset_all$RIAGENDR_new<- factor(dataset_all$RIAGENDR_new, levels = c(0:1), labels = c("Female", "Male"))
+#check this variable
+table(dataset_all$RIAGENDR_new)
+```
+
+```{r}
+#recode blood pressure
+dataset_all <- dataset_all %>% 
+  mutate(BPQ020_new = case_when(BPQ020 == 1 ~ 1,
+                             BPQ020 == 2 ~ 0
+                             ))
+dataset_all$BPQ020_new<- factor(dataset_all$BPQ020_new, levels = c(0:1), labels = c("No", "Yes"))
+#check this variable
+table(dataset_all$BPQ020_new)
+class(dataset_all$BPQ020_new)
+```
+
+```{r}
+#recode cholesterol level
+dataset_all <- dataset_all %>% 
+  mutate(BPQ080_new = case_when(BPQ080 == 1 ~ 1,
+                             BPQ080 == 2 ~ 0
+                             ))
+dataset_all$BPQ080_new<- factor(dataset_all$BPQ080_new, levels = c(0:1), labels = c("No", "Yes"))
+#check this variable
+table(dataset_all$BPQ080_new)
+```
+```{r}
+#select those age 45 and over
+dataset_all <- dataset_all%>%
+  filter(RIDAGEYR > 45 | RIDAGEYR == 45)
+```
+
+```{r}
+#recode age
+class(dataset_all$RIDAGEYR)
+
+dataset_all <- dataset_all %>% 
+  mutate(RIDAGEYR_new = case_when((RIDAGEYR > 44 & RIDAGEYR< 55)  ~ 0,
+                             (RIDAGEYR > 54 & RIDAGEYR< 65)  ~ 1,
+                             (RIDAGEYR > 64 & RIDAGEYR<75)  ~ 2,
+                             (RIDAGEYR >74 & RIDAGEYR< 85)  ~ 3,
+                             ))
+dataset_all$RIDAGEYR_new<- factor(dataset_all$RIDAGEYR_new, levels = c(0:3), labels = c("45-54", "55-64","65-74","75-84"))
+#check this variable
+table(dataset_all$RIDAGEYR_new)
+```
+
+```{r}
+#drop all NA
+dataset_all.clean<-na.omit(dataset_all)
+```
+
+```{r}
+#rename the columns
+names(dataset_all.clean)[8:12]<-c("DR_or_Eye_affected", "Sex", "High_Blood", "High_cholesterol", "Age")
+```
+
+```{r}
+# make a table 1
+label(dataset_all.clean$Age)<-"Age (years)"
+table1(~ Age + Sex + High_Blood + High_cholesterol | DR_or_Eye_affected, overall="Total", rowlabelhead="Variable",
+       data = dataset_all.clean)
+```
+
+```{r}
+#perform logistic model for High_Blood and DR_or_Eye_affected
+model1<- glm(DR_or_Eye_affected ~High_Blood, data=dataset_all.clean, family="binomial")
+summary(model1)
+
+odds.n.ends(model1)
+```
+
+
+```{r}
+#Adjust sex and age, perform logistic model for High_Blood and DR_or_Eye_affected
+model2<- glm(DR_or_Eye_affected ~High_Blood+Sex+Age, data=dataset_all.clean, family="binomial")
+summary(model2)
+
+odds.n.ends(model2)
+```
+
+
+```{r}
+#perform logistic model for High_cholesterol and DR_or_Eye_affected
+model3<- glm(DR_or_Eye_affected ~High_cholesterol, data=dataset_all.clean, family="binomial")
+summary(model3)
+odds.n.ends(model3)
+```
+
+
+```{r}
+#Adjust sex and age, perform logistic model for High_Blood and DR_or_Eye_affected
+model4<- glm(DR_or_Eye_affected ~High_cholesterol+Sex+Age, data=dataset_all.clean, family="binomial")
+summary(model4)
+odds.n.ends(model4)
+```
+
+
+```{r}
+#Check the interaction term of Sex and High_Blood
+model5<- glm(DR_or_Eye_affected ~High_Blood + Sex + Sex*High_Blood, data=dataset_all.clean, family="binomial")
+summary(model5)
+
+model6<- glm(DR_or_Eye_affected ~High_Blood + Sex, data=dataset_all.clean, family="binomial")
+summary(model6)
+
+lrtest(model5, model6)
+```
+
+```{r}
+#Check the interaction term of Age and High_Blood
+model7<- glm(DR_or_Eye_affected ~High_Blood + Age+ Age*High_Blood, data=dataset_all.clean, family="binomial")
+summary(model7)
+
+model8<- glm(DR_or_Eye_affected ~High_Blood + Age, data=dataset_all.clean, family="binomial")
+summary(model8)
+
+lrtest(model7, model8)
+```
+
+
+```{r}
+#Check the interaction term of Sex and High_cholesterol
+model9<- glm(DR_or_Eye_affected ~High_cholesterol + Sex + Sex*High_cholesterol, data=dataset_all.clean, family="binomial")
+summary(model9)
+
+model10<- glm(DR_or_Eye_affected ~High_cholesterol + Sex, data=dataset_all.clean, family="binomial")
+summary(model10)
+
+lrtest(model9, model10)
+```
+
+```{r}
+# Since the likelihood ratio test is significant, so I use Sex as effect modifier
+dataset_male<- dataset_all.clean%>% filter(dataset_all.clean$Sex =='Male')
+dataset_female<- dataset_all.clean%>% filter(dataset_all.clean$Sex =='Female')
+```
+
+
+```{r}
+# Perform model in Male group
+model10_1<- glm(DR_or_Eye_affected ~High_cholesterol, data=dataset_male, family="binomial")
+summary(model10_1)
+odds.n.ends(model10_1)
+```
+```{r}
+# Perform model in Female group
+model10_2<- glm(DR_or_Eye_affected ~High_cholesterol, data=dataset_female, family="binomial")
+summary(model10_2)
+odds.n.ends(model10_2)
+```
+```{r}
+# Adjust Age, and perform model in Female group
+model10_2_ad<- glm(DR_or_Eye_affected ~High_cholesterol+Age, data=dataset_female, family="binomial")
+summary(model10_2_ad)
+odds.n.ends(model10_2_ad)
+```
+
+```{r}
+#Check the interaction term of Age and High_cholesterol
+model11<- glm(DR_or_Eye_affected ~High_cholesterol + Age + Age*High_cholesterol, data=dataset_all.clean, family="binomial")
+summary(model11)
+
+model12<- glm(DR_or_Eye_affected ~High_cholesterol + Age, data=dataset_all.clean, family="binomial")
+summary(model12)
+
+lrtest(model11, model12)
+```
